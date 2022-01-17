@@ -20,6 +20,7 @@ class ModelNBEATS():
                 optimizer - str/keras optimizer object; default 'adam'
                 num_epoch - int, number of epochs for training; default 100
                 loss - str/keras optimizer object, used for loss evaluation in training; default 'mse'
+                verbose - parameter to control log/print when fitting the model
         """
 
     def __init__(self, y, **kwargs):
@@ -52,6 +53,7 @@ class ModelNBEATS():
         self.num_epoch = kwargs.get('num_epoch',100)
         self.loss = kwargs.get('loss','mse')
         self.model = None
+        self.verbose = kwargs.get('verbose', 1)
 
     class NBeatsBlock(tf.keras.layers.Layer):
         def __init__(self, input_size: int, theta_size: int, horizon: int, n_neurons: int, n_layers: int, stack_type: str, **kwargs):
@@ -96,7 +98,7 @@ class ModelNBEATS():
             x = inputs 
             for layer in self.hidden:
                 x = layer(x)
-                theta = self.theta_layer(x)
+            theta = self.theta_layer(x)
                 
             if self.stack_type == 'generic':
                 backcast, forecast = theta[:, :self.input_size], theta[:, -self.horizon:]
@@ -119,10 +121,10 @@ class ModelNBEATS():
 
             inputs = tf.keras.layers.Input(shape=(shape_t, shape_f))
             
-            initial_block = self.NBeatsBlock(input_size=shape_t, theta_size=shape_f, horizon=1, n_neurons=self.num_neurons, n_layers=self.num_layers, stack_type=self.stacks)
+            initial_block = self.NBeatsBlock(input_size=shape_t, theta_size=shape_f, horizon=1, n_neurons=self.num_neurons, n_layers=self.num_layers, stack_type=self.stacks[0])
             residuals, forecast = initial_block(inputs)
             for i in range(1, len(self.stacks)):
-                backcast, block_forecast = self.NBeatsBlock(input_size=inputs.shape[1], theta_size=inputs.shape[2], horizon=1, n_neurons=self.num_neurons, n_layers=self.num_layers, stack_type=self.stacks)(residuals) 
+                backcast, block_forecast = self.NBeatsBlock(input_size=shape_t, theta_size=shape_f, horizon=1, n_neurons=self.num_neurons, n_layers=self.num_layers, stack_type=self.stacks[i])(residuals) 
                 residuals = tf.keras.layers.subtract([residuals, backcast], name=f"subtract_{i}")
                 forecast = tf.keras.layers.add([forecast, block_forecast], name=f"add_{i}")
 
@@ -139,7 +141,7 @@ class ModelNBEATS():
         generator = tf.keras.preprocessing.sequence.TimeseriesGenerator(self.y_norm.values, self.y_norm[self.id].values, length=model.input.get_shape()[1], batch_size=1)  
         model.compile(optimizer=self.optimizer, loss=self.loss)
 
-        model.fit(generator, steps_per_epoch=1, epochs=self.num_epoch, shuffle=False, verbose=0)
+        model.fit(generator, steps_per_epoch=1, epochs=self.num_epoch, shuffle=False, verbose=self.verbose)
         self.model = model
 
         return self.model
